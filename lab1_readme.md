@@ -185,7 +185,9 @@ Además, el uso del método de Welch permitió mejorar la estabilidad espectral 
 
 ### 5.7. Variación de ganancia
 Con el fin de analizar el comportamiento del sistema SDR, se realizaron pruebas variando manualmente la ganancia de recepción entre 10 dB y 50 dB.
-![Figura 1: Visualización general del sistema SDR implementado](2.png)
+
+![Figura 2: Visualización general del sistema SDR implementado](2.png)
+
 **Figura 2: Respuesta espectral del sistema con ganancia de 10 dB**
 
 Para una ganancia de 10 dB se observó una señal con menor amplitud espectral y un piso de ruido reducido aproximadamente a:
@@ -193,7 +195,9 @@ Para una ganancia de 10 dB se observó una señal con menor amplitud espectral y
 $$ N_{floor} \approx -107,8 \text{ dB/Hz} \quad (4) $$
 
 La FFT instantánea presentó menor amplitud en el pico principal, indicando una recepción más débil de la emisora FM.
-![Figura 1: Visualización general del sistema SDR implementado](3.png)
+
+![Figura 3: Visualización general del sistema SDR implementado](3.png)
+
 **Figura 3: Respuesta espectral del sistema con ganancia de 20 dB**
 
 Al aumentar la ganancia a 20 dB se observó un incremento en la amplitud espectral de la señal FM y una mejora en la relación señal a ruido.
@@ -203,7 +207,7 @@ El piso de ruido aumentó hasta aproximadamente:
 $$ N_{floor} \approx -99,8 \text{ dB/Hz} \quad (5) $$
 
 La señal demodulada presentó una forma temporal más estable respecto al caso anterior.
-![Figura 1: Visualización general del sistema SDR implementado](4.png)
+![Figura 4: Visualización general del sistema SDR implementado](4.png)
 **Figura 4: Respuesta espectral del sistema con ganancia de 30 dB**
 
 Con una ganancia de 30 dB se obtuvo una recepción estable de la emisora FM y un adecuado equilibrio entre potencia espectral y ruido.
@@ -217,7 +221,9 @@ mientras que el piso de ruido fue cercano a:
 $$ N_{floor} \approx -92,3 \text{ dB/Hz} \quad (7) $$
 
 En esta condición se observó una señal demodulada continua y correctamente recuperada.
-![Figura 1: Visualización general del sistema SDR implementado](5.png)
+
+![Figura 5: Visualización general del sistema SDR implementado](5.png)
+
 **Figura 5: Respuesta espectral del sistema con ganancia de 40 dB**
 
 Al incrementar la ganancia a 40 dB aumentó significativamente la amplitud espectral de la señal capturada.
@@ -228,7 +234,7 @@ $$ N_{floor} \approx -81,8 \text{ dB/Hz} \quad (8) $$
 
 Esto produjo una mayor dispersión espectral y aumento de fluctuaciones en la PSD.
 
-![Figura 1: Visualización general del sistema SDR implementado](6.png)
+![Figura 6: Visualización general del sistema SDR implementado](6.png)
 
 **Figura 6: Respuesta espectral del sistema con ganancia de 50 dB y frecuencia de 101.7 MHz**
 
