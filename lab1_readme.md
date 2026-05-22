@@ -4,7 +4,7 @@
 **Informe de Laboratorio**
 
 **Presentado por:**
-* Marlyn Nathalia Mora Riascos
+* Marlyn Nathalia Mora Riasco
 * Hernan Jair Telpiz Cuaran
 * Brayan Manuel Gallego Ocampo
 
@@ -71,229 +71,175 @@ La demodulación FM permite recuperar la señal modulante a partir de variacione
 
 En esta práctica se utilizó demodulación basada en la diferencia de fase entre muestras consecutivas, permitiendo obtener la señal de audio correspondiente a la emisora FM capturada.
 
+
 ## 4. Metodología
+
 Para el desarrollo de la práctica se utilizó una RTL-SDR conectada a un computador para capturar señales FM reales en la banda comercial.
 
 El sistema fue implementado en Python utilizando librerías de procesamiento digital de señales, visualización gráfica y adquisición en tiempo real. A partir de las muestras complejas I/Q obtenidas desde la RTL-SDR, el flujo de la señal se divide en dos ramas principales: análisis espectral y demodulación de audio.
 
+En la versión final del sistema se integró toda la visualización en un **dashboard unificado** compuesto por tres paneles: FFT instantánea, PSD por Welch con curvas cruda y filtrada, y señal FM demodulada. El periodograma fue descartado del sistema final dado que la estimación por Welch ofrece mayor estabilidad espectral.
+
 **Diagrama de bloques del sistema:**
 
 ```mermaid
-
 flowchart TD
-
-    A["RTL-SDR Hardware"]
+    A["RTL-SDR Hardware\nLNA Gain / VGA Gain"]
     B["Muestras I/Q en banda base"]
-    C["Análisis espectral\nFFT / Periodograma / Welch"]
-    D["Filtro pasa-bajas\n100 kHz"]
-    E["Demodulador FM\nDiscriminador polar"]
-    F["Salida de audio\nOsciloscopio"]
-
+    C["FFT Instantánea"]
+    D["PSD por Welch\nSeñal cruda y filtrada"]
+    E["Filtro pasa-bajas\n100 kHz"]
+    F["Demodulador FM\nDiscriminador polar"]
+    G["Señal de audio\nBúfer de audio"]
+    H["Dashboard unificado\nVisualización en tiempo real"]
     A --> B
     B --> C
     B --> D
-    D --> E
+    B --> E
     E --> F
+    F --> G
+    C --> H
+    D --> H
+    G --> H
 ```
 ### 4.1. Parámetros de adquisición
-Durante la práctica se configuraron diferentes parámetros de adquisición para analizar el comportamiento espectral de la señal.
 
 | Parámetro | Valor |
 |---|---|
-| Frecuencia central | 100 MHz |
-| Ganancia manual | 30 dB |
-| Ancho de banda FM | 75 kHz |
+| Frecuencia central | 99.7 MHz |
+| LNA Gain | Variable (10 dB – 50 dB) |
+| VGA Gain | Variable (×2.0 como base) |
+| Tasa de muestreo (Fs) | 2.048 MSps |
+| N_PSD (puntos Welch) | 1024 |
 | Procesamiento | Tiempo real |
 
 *Cuadro 1: Parámetros principales de adquisición*
 
 ### 4.2. Procesamiento espectral
-Las muestras I/Q capturadas fueron procesadas mediante tres métodos principales:
-* FFT instantánea.
-* PSD mediante periodograma.
-* PSD mediante el método de Welch.
 
-Además, se realizó demodulación FM y visualización temporal de la señal obtenida.
+Las muestras I/Q capturadas fueron procesadas mediante dos métodos principales:
+
+* FFT instantánea.
+* PSD mediante el método de Welch, visualizando simultáneamente la señal cruda y la señal filtrada.
+
+Adicionalmente, se realizó demodulación FM y visualización temporal de la señal de audio en el panel inferior del dashboard.
 
 ### 4.3. Monitoreo computacional
-El sistema registró métricas relacionadas con el desempeño computacional, incluyendo:
+
+El sistema registró métricas en tiempo real en la barra inferior del dashboard, incluyendo:
+
 * uso de CPU,
 * memoria RAM,
-* tiempo de captura,
-* tiempo de procesamiento DSP,
-* tiempo total de ciclo.
+* frecuencia central sintonizada,
+* potencia de la señal en dBFS,
+* piso de ruido estimado.
+### 5. Resultados experimentales
+### 5.1. Variación de parámetros combinados
 
-Estas métricas permitieron evaluar el comportamiento del sistema en tiempo real y analizar el impacto computacional del procesamiento espectral.
+Con el fin de analizar el comportamiento del sistema SDR de forma integral, se realizaron cinco pruebas variando simultáneamente la ganancia LNA, la ganancia VGA, el número de puntos de Welch (N_PSD) y la tasa de muestreo (Fs).
 
-## 5. Resultados Experimentales
+| Captura | LNA | VGA | Fs (Hz) | N_PSD | Potencia | Clipping |
+|---|---|---|---|---|---|---|
+| 1 | 10 dB | x0.1 | 1.024.000 | 256 | -37.5 dBFS | No |
+| 2 | 20 dB | x0.5 | 1.024.000 | 512 | -25.9 dBFS | No |
+| 3 | 30 dB | x1.0 | 2.048.000 | 1024 | -16.8 dBFS | No |
+| 4 | 40 dB | x1.5 | 2.048.000 | 2048 | -7.4 dBFS | Sí |
+| 5 | 50 dB | x2.0 | 2.400.000 | 4096 | -0.7 dBFS | Sí |
+
+*Cuadro 2: Parámetros y métricas de cada prueba experimental*
+
+
+### LNA 10 dB, VGA x0.1, N_PSD 256, Fs 1.024 MSps
 
 <br>
 
-![Figura 1: Visualización general del sistema SDR implementado](imagenes/1.png)
+![Figura 2: Dashboard con LNA 10 dB, VGA x0.1, N_PSD 256, Fs 1.024 MSps](imagenes/diez.png)
 
 <br>
 
-**Figura 1: Visualización general del sistema SDR implementado**
 
-### 5.1. FFT instantánea
-La FFT instantánea permitió observar el comportamiento espectral de la señal FM capturada alrededor de la frecuencia central de 99.7 MHz.
+**Figura 2: Dashboard con LNA 10 dB, VGA x0.1, N_PSD 256, Fs 1.024 MSps**
 
-Se observó un pico dominante correspondiente a la emisora capturada, además de fluctuaciones rápidas en el espectro debido al uso de un único bloque de muestras.
+Con la configuración mínima de ganancia y resolución espectral, la señal FM capturada presentó la menor potencia registrada de -37.5 dBFS. En el panel de FFT instantánea se observó un pico débil alrededor de 99.7 MHz con alta variabilidad y amplitud reducida. La PSD de Welch mostró el piso de ruido más bajo de todas las pruebas aproximadamente en -105 dB/Hz, aunque la curva cruda presentó escasa resolución espectral debido al bajo valor de N_PSD de 256 puntos. La señal FM demodulada fue prácticamente plana con amplitud cercana a cero, confirmando que la ganancia mínima no permitió una demodulación funcional.
 
-También se evidenció la presencia de componentes de ruido distribuidas alrededor de la señal principal.
+#### LNA 20 dB, VGA x0.5, N_PSD 512, Fs 1.024 MSps
 
-### 5.2. PSD mediante periodograma
-El periodograma permitió estimar la densidad espectral de potencia de la señal utilizando ventaneo Hann.
+<br>
 
-En comparación con la FFT instantánea, el periodograma presentó una representación más estable del espectro y permitió identificar con mayor claridad el piso de ruido.
+![Figura 3: Dashboard con LNA 20 dB, VGA x0.5, N_PSD 512, Fs 1.024 MSps](imagenes/veinte.png)
 
-El piso de ruido estimado fue aproximadamente:
+<br>
 
-$$ N_{floor} \approx -92,3 \text{ dB/Hz} \quad (3) $$
+**Figura 3: Dashboard con LNA 20 dB, VGA x0.5, N_PSD 512, Fs 1.024 MSps**
 
-### 5.3. PSD mediante Welch
-El método de Welch produjo la estimación espectral más estable debido al promedio de múltiples segmentos de la señal.
+Al incrementar la ganancia LNA a 20 dB y la resolución espectral N_PSD a 512 puntos, la potencia registrada en banda base aumentó a -25.9 dBFS. En el panel de PSD de Welch, el aumento de N_PSD mejoró notablemente la resolución en frecuencia, permitiendo definir con mayor claridad la forma del lóbulo principal de la emisora. El piso de ruido de la señal cruda (curva azul) se elevó ligeramente y se observa estable alrededor de -100 dB/Hz. En el dominio temporal, a diferencia del caso de 10 dB, la señal de audio demodulada ya presenta variaciones de amplitud estructuradas (oscilando entre -0.5 y 0.4 aproximadamente). Esto indica que la relación señal a ruido es suficiente para que el discriminador recupere la señal modulante, estableciendo esta configuración como el umbral mínimo de recepción funcional.
 
-La señal filtrada presentó reducción significativa del ruido fuera de banda y menor variabilidad espectral respecto al periodograma y la FFT instantánea.
+#### LNA 30 dB, VGA x1.0, N_PSD 1024, Fs 2.048 MSps
 
-Además, se observó que el filtrado permitió aislar con mayor claridad la componente principal de la emisora FM.
+<br>
 
-### 5.4. Comparación entre FFT, periodograma y Welch
-La FFT instantánea presentó mayor variabilidad entre actualizaciones debido a que utiliza un único bloque de muestras, aunque permitió observar cambios rápidos en el espectro.
+![Figura 4: Dashboard con LNA 30 dB, VGA x1.0, N_PSD 1024, Fs 2.048 MSps](imagenes/treinta.png)
 
-El periodograma proporcionó una representación más estable de la PSD gracias al uso de ventaneo Hann.
+<br>
 
-Por otra parte, el método de Welch generó la estimación espectral más estable debido al promedio de múltiples segmentos, reduciendo significativamente las fluctuaciones y el ruido fuera de banda.
+**Figura 4: Dashboard con LNA 30 dB, VGA x1.0, N_PSD 1024, Fs 2.048 MSps**
 
-Sin embargo, Welch requirió mayor procesamiento computacional respecto a la FFT instantánea y el periodograma.
+Con una ganancia de 30 dB, el sistema alcanzó un punto de operación nominal. La tasa de muestreo (Fs) se incrementó a 2.048 MSps y la resolución N_PSD a 1024 puntos, lo que expandió el ancho de banda analizado y mejoró la definición de las componentes espectrales. La potencia registrada fue de -16.8 dBFS, indicando una recepción sólida sin llegar a saturar el conversor (no hay indicador de clipping en la interfaz). El piso de ruido en la PSD de Welch subió a aproximadamente -92 dB/Hz, pero la amplitud del lóbulo principal creció en mayor proporción, mejorando la relación señal a ruido. En consecuencia, la señal demodulada presenta una excursión completa y bien definida, abarcando un rango dinámico desde -1.0 hasta 0.8, lo que representa la recuperación óptima del audio.
 
-### 5.5. Señal FM demodulada
-La señal FM demodulada presentó variaciones temporales continuas asociadas al contenido de audio de la emisora capturada.
 
-La forma temporal obtenida indicó que la demodulación FM implementada funcionó correctamente, permitiendo recuperar la señal modulante a partir de las muestras complejas I/Q capturadas por la RTL-SDR.
 
-### 5.6. Costo computacional
-Las métricas computacionales obtenidas durante la ejecución del sistema fueron las siguientes:
+#### LNA 40 dB, VGA x1.5, N_PSD 2048, Fs 2.048 MSps
 
-| Métrica | Valor |
+<br>
+
+![Figura 5: Dashboard con LNA 40 dB, VGA x1.5, N_PSD 2048, Fs 2.048 MSps](imagenes/cuarenta.png)
+
+<br>
+
+**Figura 5: Dashboard con LNA 40 dB, VGA x1.5, N_PSD 2048, Fs 2.048 MSps**
+
+Al incrementar la ganancia LNA a 40 dB y la VGA a x1.5, la potencia escaló a -7.4 dBFS. En este punto, la interfaz despliega la alerta de "CLIPPING!", indicando que las muestras I/Q están excediendo el rango dinámico del ADC del receptor. Aunque se incrementó N_PSD a 2048 puntos para obtener mayor resolución frecuencial, el exceso de ganancia provocó una elevación notable del piso de ruido en la PSD de Welch (aproximándose a -80 dB/Hz) y la aparición de ruido fuera de banda causado por la distorsión no lineal. La señal temporal de audio comienza a mostrar deformaciones bruscas y picos de alta frecuencia, lo que en la práctica se traduce en pérdida de fidelidad y ruido audible.
+
+#### LNA 50 dB, VGA x2.0, N_PSD 4096, Fs 2.400 MSps
+
+<br>
+
+![Figura 6: Dashboard con LNA 50 dB, VGA x2.0, N_PSD 4096, Fs 2.400 MSps](imagenes/cincuenta.png)
+
+<br>
+
+**Figura 6: Dashboard con LNA 50 dB, VGA x2.0, N_PSD 4096, Fs 2.400 MSps**
+
+Bajo la configuración máxima de ganancia (LNA 50 dB, VGA x2.0), el sistema operó en un estado de saturación severa, registrando una potencia de -0.7 dBFS (prácticamente el límite de escala completa de 0 dBFS). A pesar de emplear la máxima resolución disponible (N_PSD de 4096 puntos y Fs de 2.4 MSps), el espectro calculado por el método de Welch se encuentra altamente degradado por armónicos artificiales y fuga espectral derivados del recorte (*clipping*) de la señal en banda base. La señal demodulada se encuentra totalmente destruida, presentando una forma de onda errática, angulosa y sin la envolvente continua propia del audio FM. 
+
+### 5.2 Análisis general del compromiso de ganancia
+
+Los resultados experimentales demuestran el compromiso de diseño inherente a los sistemas SDR de bajo costo. Una ganancia deficiente (10 dB) no logra superar el piso de ruido térmico, imposibilitando la demodulación. Un valor óptimo (20 a 30 dB) maximiza la relación señal a ruido (SNR) y permite la correcta recuperación de la modulante sin saturar el frontend de RF. Por el contrario, un exceso de ganancia (40 a 50 dB) fuerza al ADC fuera de su región lineal, introduciendo recorte que los algoritmos de procesamiento digital (como Welch) no pueden corregir, ya que procesan datos matemáticamente corrompidos desde la etapa de adquisición.
+
+
+
+### 5.3 Análisis de costo computacional
+
+El despliegue de algoritmos DSP en tiempo real exige que el tiempo total de procesamiento por ciclo ($T_{ciclo}$) sea estrictamente menor al tiempo de actualización requerido para evitar la pérdida de muestras. Según la dinámica del sistema evaluado:
+
+$$T_{ciclo} = T_{captura} + T_{DSP} + T_{graficas}$$
+
+Durante la ejecución del dashboard unificado, se monitorearon las métricas del proceso. Al escalar los parámetros hacia la configuración de mayor carga computacional (N_PSD = 4096, Fs = 2.4 MSps), el método de Welch demandó el cálculo de múltiples transformadas rápidas de Fourier (FFT) por cada actualización, impactando el $T_{DSP}$.
+
+| Métrica | Valor Observado (Aprox.) |
 |---|---|
-| CPU total | 9.3 % |
-| Memoria RAM | 212.5 MB |
-| Frecuencia central | 99.980 MHz |
-| Potencia | -19.6 dBFS |
-| Piso de ruido | -92.3 dB/Hz |
+| Memoria RAM (Proceso Python) | [LLENAR VALOR] MB |
+| Uso de CPU (Proceso Python) | [LLENAR VALOR] % |
+| Tiempo de Captura ($T_{captura}$) | [LLENAR VALOR] ms |
+| Tiempo DSP ($T_{DSP}$) | [LLENAR VALOR] ms |
+| Tiempo Total de Ciclo ($T_{ciclo}$) | [LLENAR VALOR] ms |
 
-*Cuadro 2: Métricas computacionales y espectrales del sistema*
+*Cuadro 3: Métricas computacionales del sistema*
 
-El sistema logró mantener funcionamiento estable en tiempo real con un consumo moderado de CPU y memoria RAM.
-
-Además, el uso del método de Welch permitió mejorar la estabilidad espectral y reducir el ruido fuera de banda, aunque con un incremento moderado en el costo computacional.
-
-### 5.7. Variación de ganancia
-Con el fin de analizar el comportamiento del sistema SDR, se realizaron pruebas variando manualmente la ganancia de recepción entre 10 dB y 50 dB.
-
-<br>
-
-![Figura 2: Visualización general del sistema SDR implementado](imagenes/2.png)
-
-<br>
-
-**Figura 2: Respuesta espectral del sistema con ganancia de 10 dB**
-
-Para una ganancia de 10 dB se observó una señal con menor amplitud espectral y un piso de ruido reducido aproximadamente a:
-
-$$ N_{floor} \approx -107,8 \text{ dB/Hz} \quad (4) $$
-
-La FFT instantánea presentó menor amplitud en el pico principal, indicando una recepción más débil de la emisora FM.
-
-<br>
-
-![Figura 3: Visualización general del sistema SDR implementado](imagenes/3.png)
-
-<br>
-
-**Figura 3: Respuesta espectral del sistema con ganancia de 20 dB**
-
-Al aumentar la ganancia a 20 dB se observó un incremento en la amplitud espectral de la señal FM y una mejora en la relación señal a ruido.
-
-El piso de ruido aumentó hasta aproximadamente:
-
-$$ N_{floor} \approx -99,8 \text{ dB/Hz} \quad (5) $$
-
-La señal demodulada presentó una forma temporal más estable respecto al caso anterior.
-
-<br>
-
-![Figura 4: Visualización general del sistema SDR implementado](imagenes/4.png)
-
-<br>
-
-**Figura 4: Respuesta espectral del sistema con ganancia de 30 dB**
-
-Con una ganancia de 30 dB se obtuvo una recepción estable de la emisora FM y un adecuado equilibrio entre potencia espectral y ruido.
-
-La potencia registrada fue aproximadamente:
-
-$$ P \approx -19,6 \text{ dBFS} \quad (6) $$
-
-mientras que el piso de ruido fue cercano a:
-
-$$ N_{floor} \approx -92,3 \text{ dB/Hz} \quad (7) $$
-
-En esta condición se observó una señal demodulada continua y correctamente recuperada.
-
-<br>
-
-![Figura 5: Visualización general del sistema SDR implementado](imagenes/5.png)
-
-<br>
-
-**Figura 5: Respuesta espectral del sistema con ganancia de 40 dB**
-
-Al incrementar la ganancia a 40 dB aumentó significativamente la amplitud espectral de la señal capturada.
-
-Sin embargo, también se observó incremento del piso de ruido hasta aproximadamente:
-
-$$ N_{floor} \approx -81,8 \text{ dB/Hz} \quad (8) $$
-
-Esto produjo una mayor dispersión espectral y aumento de fluctuaciones en la PSD.
-
-<br>
-
-![Figura 6: Visualización general del sistema SDR implementado](imagenes/6.png)
-
-<br>
-
-**Figura 6: Respuesta espectral del sistema con ganancia de 50 dB y frecuencia de 101.7 MHz**
-
-Con una ganancia de 50 dB se observó el mayor nivel de potencia espectral:
-
-$$ P \approx -9,4 \text{ dBFS} \quad (9) $$
-
-No obstante, el aumento excesivo de ganancia también elevó considerablemente el piso de ruido y generó deformaciones visibles en el espectro.
-
-Además, al cambiar la frecuencia central hacia 101.7 MHz se identificó una distribución espectral distinta, evidenciando la capacidad del sistema para sintonizar diferentes emisoras FM manualmente.
-
-### 5.8. Análisis general
-A medida que la ganancia aumentó, la potencia de la señal capturada también incrementó progresivamente.
-
-Sin embargo, este incremento produjo simultáneamente una elevación del piso de ruido y una reducción de estabilidad espectral.
-
-Las pruebas realizadas mostraron que valores intermedios de ganancia, alrededor de 20 dB a 30 dB, ofrecieron el mejor compromiso entre calidad espectral, estabilidad y nivel de ruido.
-
-Por otra parte, ganancias elevadas como 50 dB aumentaron considerablemente el ruido y produjeron mayor variabilidad en la señal demodulada.
-
-Estos resultados evidencian el compromiso existente entre sensibilidad de recepción y estabilidad espectral en sistemas SDR de bajo costo como la RTL-SDR.
+A pesar del incremento en el costo computacional asociado al cálculo del promedio de periodogramas en el método de Welch y al filtrado digital de la señal, el sistema logró mantener una actualización estable en la interfaz gráfica. Se evidenció que la renderización gráfica de Matplotlib ($T_{graficas}$) representa uno de los cuellos de botella más críticos en aplicaciones SDR basadas en Python.
 
 ## 6. Conclusiones
-La RTL-SDR permitió implementar un sistema funcional de análisis espectral y demodulación FM en tiempo real utilizando procesamiento digital de señales en Python.
 
-La FFT instantánea permitió observar cambios rápidos en el espectro, mientras que el periodograma y especialmente el método de Welch proporcionaron estimaciones más estables de la densidad espectral de potencia.
-
-El aumento de la ganancia produjo incremento de la potencia de la señal recibida, pero también elevó el piso de ruido y la variabilidad espectral, evidenciando el compromiso entre sensibilidad y estabilidad del sistema.
-
-Las pruebas experimentales mostraron que valores intermedios de ganancia ofrecieron mejores condiciones de recepción respecto a configuraciones extremas.
-
-La demodulación FM implementada permitió recuperar correctamente la señal temporal de audio a partir de las muestras complejas I/Q capturadas por la RTL-SDR.
-
-Finalmente, el sistema presentó un costo computacional moderado y logró mantener operación estable en tiempo real durante las pruebas realizadas.
+1. La RTL-SDR demostró ser una herramienta de adquisición de hardware eficaz al trasladar la complejidad de la sintonía, filtrado y demodulación hacia el dominio de software mediante muestras $I/Q$ en banda base. No obstante, su rango dinámico es limitado y altamente susceptible a la saturación (clipping) si no se calibra la ganancia analógica adecuadamente.
+2. La evaluación de estimadores espectrales confirmó que, mientras la FFT instantánea reacciona rápidamente a transitorios, la Densidad Espectral de Potencia calculada mediante el método de Welch ofrece una representación significativamente más estable. La segmentación y promediado de periodogramas logran minimizar la varianza del piso de ruido, exigiendo a cambio un mayor costo computacional.
+3. El barrido paramétrico de ganancia comprobó la existencia de un compromiso ineludible en el diseño del receptor. Las ganancias bajas sumergen la señal por debajo del piso de ruido térmico, mientras que las ganancias excesivas empujan al ADC a su región no lineal. Este último estado produce recortes que generan fuga espectral y armónicos artificiales, destruyendo la señal modulante de audio, un daño físico irreparable mediante software.

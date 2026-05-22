@@ -4,7 +4,7 @@
 
 import pyqtgraph as pg
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, 
-                             QLabel, QDoubleSpinBox, QSlider, QComboBox, QFrame)
+                             QLabel, QDoubleSpinBox, QSlider, QComboBox, QFrame, QPushButton)
 from PyQt5.QtCore import Qt
 import backend
 
@@ -80,6 +80,14 @@ class DashboardWidget(QWidget):
                 width: 20px;
             }
             
+            /* Botón de grabar */
+            QPushButton {
+                background-color: #2c313a; border: 1px solid #3e4451; border-radius: 4px;
+                padding: 5px 15px; color: #abb2bf; font-weight: bold;
+            }
+            QPushButton:hover { background-color: #3e4451; }
+            QPushButton:checked { background-color: #e06c75; color: #ffffff; border: 1px solid #e06c75; }
+
             /* Panel de métricas inferior */
             QLabel#MetricsLabel {
                 color: #61afef;
@@ -93,6 +101,24 @@ class DashboardWidget(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(15, 15, 15, 15) # Márgenes de toda la ventana
         layout.setSpacing(15)
+
+        # Indicador de Modo Offline con Selector de Archivos (Oculto por defecto)
+        self.offline_panel = QFrame()
+        self.offline_panel.setStyleSheet("background: #2c313a; border-radius: 4px;")
+        self.offline_panel.setVisible(False)
+        off_layout = QHBoxLayout(self.offline_panel)
+        off_layout.setContentsMargins(10, 5, 10, 5)
+        
+        self.lbl_offline = QLabel("⚡ MODO OFFLINE ACTIVADO | Seleccionar grabación:")
+        self.lbl_offline.setStyleSheet("color: #e06c75; font-size: 14px; font-weight: bold;")
+        off_layout.addWidget(self.lbl_offline)
+        
+        self.combo_archivos = QComboBox()
+        self.combo_archivos.setMinimumWidth(300)
+        off_layout.addWidget(self.combo_archivos)
+        off_layout.addStretch() # Empuja todo a la izquierda
+        
+        layout.addWidget(self.offline_panel)
 
         # =========================================================
         # SECCIÓN DE GRÁFICOS
@@ -139,6 +165,11 @@ class DashboardWidget(QWidget):
         ctrl_layout.setContentsMargins(15, 12, 15, 12)
         ctrl_layout.setSpacing(20)
         
+        # Botón de Grabación
+        self.btn_record = QPushButton("⏺ Grabar")
+        self.btn_record.setCheckable(True)
+        ctrl_layout.addWidget(self.btn_record)
+
         # Input Frecuencia
         frec_layout = QHBoxLayout()
         frec_layout.addWidget(QLabel("Frec (MHz):"))
@@ -210,10 +241,12 @@ class DashboardWidget(QWidget):
     # EVENTOS
     # =========================================================
     def on_freq_change(self, val):
-        backend.sdr.center_freq = val * 1e6
+        if not backend.OFFLINE_MODE:
+            backend.sdr.center_freq = val * 1e6
 
     def on_lna_change(self, val):
-        backend.sdr.gain = val
+        if not backend.OFFLINE_MODE:
+            backend.sdr.gain = val
         self.lbl_lna_val.setText(f"{val} dB")
 
     def on_vga_change(self, val):

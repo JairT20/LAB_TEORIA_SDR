@@ -4,9 +4,10 @@
 
 import numpy as np
 from scipy import signal
-from rtlsdr import RtlSdr
 from queue import Queue, Empty
 import threading
+import time
+import os
 
 # =========================================================
 # CONFIGURACIÓN INICIAL
@@ -62,11 +63,20 @@ class RingBuffer:
 # INICIALIZACIÓN SDR Y VARIABLES GLOBALES
 # =========================================================
 
-sdr = RtlSdr()
-sdr.sample_rate = SAMPLE_RATE
-sdr.center_freq = CENTER_FREQ
-sdr.set_manual_gain_enabled(True)
-sdr.gain = GAIN
+OFFLINE_MODE = False
+try:
+    from rtlsdr import RtlSdr
+    sdr = RtlSdr()
+    sdr.sample_rate = SAMPLE_RATE
+    sdr.center_freq = CENTER_FREQ
+    sdr.set_manual_gain_enabled(True)
+    sdr.gain = GAIN
+except Exception as e:
+    print(f"\n[ADVERTENCIA] Falló la conexión con RTL-SDR.")
+    print(f"Motivo reportado por el sistema: {e}")
+    print(f"Iniciando en MODO OFFLINE...\n")
+    sdr = None
+    OFFLINE_MODE = True
 
 b_filt, a_filt = None, None
 zi_filt = None
@@ -78,6 +88,12 @@ iq_ring_buffer = RingBuffer(N_PSD)
 audio_queue = Queue(maxsize=100)
 latest_audio = np.zeros(int(N_AUDIO / DECIMATION_FACTOR))
 lock = threading.Lock()
+
+# Variables para grabar y métricas
+is_recording = False
+offline_filename = ""
+recording_buffer = []
+dsp_time = 0.0  # Mide el costo computacional del DSP
 
 # =========================================================
 # FUNCIONES DSP
@@ -93,7 +109,6 @@ def update_filters():
     b_audio, a_audio = signal.butter(4, AUDIO_CUTOFF / (SAMPLE_RATE / 2), btype='low')
     zi_audio = signal.lfilter_zi(b_audio, a_audio) * 0
 
-# Inicializar filtros la primera vez
 update_filters()
 
 def calculate_axes(n, fs, fc):
@@ -113,7 +128,13 @@ def calc_welch(x, fs, nperseg):
 # =========================================================
 
 def sdr_callback(samples, context):
-    global zi_filt, zi_audio, last_iq, latest_audio
+    global zi_filt, zi_audio, last_iq, latest_audio, is_recording, recording_buffer, dsp_time
+
+    # Medición de Costo Computacional Inicial
+    t_start = time.perf_counter()
+
+    if is_recording:
+        recording_buffer.extend(samples)
 
     # Filtro pasabajos FM
     iq_filtered, zi_filt = signal.lfilter(b_filt, a_filt, samples, zi=zi_filt)
@@ -130,6 +151,10 @@ def sdr_callback(samples, context):
     # Ganancia Digital VGA y Normalización
     audio_out = audio_out / (np.max(np.abs(audio_out)) + 1e-12)
     audio_out = np.float32(audio_out * DIGITAL_VGA)
+
+    # Fin de medición DSP
+    t_end = time.perf_counter()
+    dsp_time = (t_end - t_start) * 1000.0  # Guardar en milisegundos
 
     try:
         audio_queue.put_nowait(audio_out)
@@ -150,3 +175,43 @@ def audio_callback(outdata, frames, time_info, status):
             outdata[:len(data), 0] = data
     except Empty:
         outdata.fill(0)
+
+# Trabajador para reproducir archivo guardado dinámicamente
+def mock_sdr_worker(callback, chunk_size):
+    global offline_filename
+    
+    while True:
+        if not offline_filename or not os.path.exists(offline_filename):
+            time.sleep(0.5)
+            continue
+            
+        print(f"[SISTEMA] Cargando pista: {offline_filename}")
+        try:
+            data = np.load(offline_filename)
+        except Exception as e:
+            print(f"[ERROR] Archivo corrupto o ilegible: {e}")
+            time.sleep(1)
+            continue
+            
+        idx = 0
+        archivo_en_reproduccion = offline_filename
+        
+        while archivo_en_reproduccion == offline_filename:
+            while audio_queue.qsize() > 50:
+                time.sleep(0.01)
+                if archivo_en_reproduccion != offline_filename:
+                    break 
+                    
+            if archivo_en_reproduccion != offline_filename:
+                break
+                
+            end_idx = idx + chunk_size
+            
+            if end_idx > len(data):
+                chunk = np.concatenate((data[idx:], data[:end_idx - len(data)]))
+                idx = end_idx % len(data)
+            else:
+                chunk = data[idx:end_idx]
+                idx = end_idx
+
+            callback(chunk, None)

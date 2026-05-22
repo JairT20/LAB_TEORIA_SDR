@@ -1,4 +1,3 @@
-
 # Entornos virtuales
 venv/
 .venv/
@@ -13,3 +12,7 @@ ENV/
 # Archivos ocultos del sistema o editor
 .DS_Store
 .vscode/
+
+# Ignorar grabaciones de SDR, excepto el archivo de prueba base
+audios/*
+
