@@ -19,7 +19,7 @@ Sigue estos pasos en tu terminal para configurar el entorno virtual:
    pip install -r requirements.txt
 
 4. EJECUTAR EL PROYECTO:
-   python main.py
+   python src/main.py
 
 ------------------------------------------------------------
 Nota: Recuerda activar siempre el venv antes de trabajar.

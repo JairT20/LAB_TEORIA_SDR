@@ -1,237 +1,146 @@
 # =========================================================
-# RTL-SDR FM DASHBOARD - BACKEND
+# RTL-SDR FM DASHBOARD - BACKEND (Ring Buffer y DSP)
 # =========================================================
 
 import numpy as np
 from scipy import signal
 from rtlsdr import RtlSdr
-import sounddevice as sd
 from queue import Queue, Empty
 import threading
 
 # =========================================================
-# CONFIGURACIÓN
+# CONFIGURACIÓN INICIAL
 # =========================================================
 
 SAMPLE_RATE = 2.048e6
-CENTER_FREQ = 100e6
+CENTER_FREQ = 100.0e6
 GAIN = 30
-
-# =========================================================
-# AUDIO
-# =========================================================
+DIGITAL_VGA = 1.0  # Ganancia por software
 
 N_AUDIO = 8192
 DECIMATION_FACTOR = 42
 AUDIO_RATE = int(SAMPLE_RATE / DECIMATION_FACTOR)
 AUDIO_CUTOFF = 15000
 
-# =========================================================
-# PSD
-# =========================================================
-
 N_PSD = 65536
 N_PER_SEG = 1024
-
-# =========================================================
-# FM
-# =========================================================
-
 FM_BW = 75e3
 
 # =========================================================
-# GUI CONFIG (Compartida)
+# CLASE RING BUFFER (Sin bloqueos de copia de memoria)
 # =========================================================
 
-GUI_UPDATE_INTERVAL = 20
+class RingBuffer:
+    def __init__(self, size):
+        self.size = size
+        self.buffer = np.zeros(size, dtype=np.complex64)
+        self.index = 0
+
+    def extend(self, data):
+        data_len = len(data)
+        end_idx = self.index + data_len
+        
+        if end_idx < self.size:
+            self.buffer[self.index:end_idx] = data
+        else:
+            overflow = end_idx - self.size
+            self.buffer[self.index:self.size] = data[:data_len - overflow]
+            self.buffer[0:overflow] = data[data_len - overflow:]
+            
+        self.index = end_idx % self.size
+
+    def get_latest(self, n):
+        if self.index >= n:
+            return self.buffer[self.index - n : self.index]
+        else:
+            return np.concatenate((
+                self.buffer[-(n - self.index):], 
+                self.buffer[:self.index]
+            ))
 
 # =========================================================
-# SDR INITIALIZATION
+# INICIALIZACIÓN SDR Y VARIABLES GLOBALES
 # =========================================================
 
 sdr = RtlSdr()
 sdr.sample_rate = SAMPLE_RATE
 sdr.center_freq = CENTER_FREQ
+sdr.set_manual_gain_enabled(True)
 sdr.gain = GAIN
 
-# =========================================================
-# FILTRO FM
-# =========================================================
-
-b_filt, a_filt = signal.butter(
-    4,
-    FM_BW / (SAMPLE_RATE / 2),
-    btype='low'
-)
-
-zi_filt = signal.lfilter_zi(
-    b_filt,
-    a_filt
-) * 0
-
-# =========================================================
-# FILTRO AUDIO
-# =========================================================
-
-b_audio, a_audio = signal.butter(
-    4,
-    AUDIO_CUTOFF / (SAMPLE_RATE / 2),
-    btype='low'
-)
-
-zi_audio = signal.lfilter_zi(
-    b_audio,
-    a_audio
-) * 0
-
-# =========================================================
-# VARIABLES GLOBALES DE ESTADO
-# =========================================================
+b_filt, a_filt = None, None
+zi_filt = None
+b_audio, a_audio = None, None
+zi_audio = None
 
 last_iq = 0j
-
-iq_psd_buffer = np.zeros(
-    N_PSD,
-    dtype=np.complex64
-)
-
+iq_ring_buffer = RingBuffer(N_PSD)
 audio_queue = Queue(maxsize=100)
-
-latest_audio = np.zeros(
-    int(N_AUDIO / DECIMATION_FACTOR)
-)
-
+latest_audio = np.zeros(int(N_AUDIO / DECIMATION_FACTOR))
 lock = threading.Lock()
-
-show_clipping = False
-
-freq_buttons = []
-freq_axes = []
-saved_freqs = []
 
 # =========================================================
 # FUNCIONES DSP
 # =========================================================
 
-def calculate_axes(n, sample_rate, center_freq):
-    f_rel = np.fft.fftshift(
-        np.fft.fftfreq(n, d=1/sample_rate)
-    )
-    f_abs = (center_freq + f_rel) / 1e6
+def update_filters():
+    global b_filt, a_filt, zi_filt, b_audio, a_audio, zi_audio, AUDIO_RATE
+    AUDIO_RATE = int(SAMPLE_RATE / DECIMATION_FACTOR)
+    
+    b_filt, a_filt = signal.butter(4, FM_BW / (SAMPLE_RATE / 2), btype='low')
+    zi_filt = signal.lfilter_zi(b_filt, a_filt) * 0
+    
+    b_audio, a_audio = signal.butter(4, AUDIO_CUTOFF / (SAMPLE_RATE / 2), btype='low')
+    zi_audio = signal.lfilter_zi(b_audio, a_audio) * 0
+
+# Inicializar filtros la primera vez
+update_filters()
+
+def calculate_axes(n, fs, fc):
+    f_rel = np.fft.fftshift(np.fft.fftfreq(n, d=1/fs))
+    f_abs = (fc + f_rel) / 1e6
     return f_rel, f_abs
-
-def calc_fft(x):
-    w = np.hanning(len(x))
-    X = np.fft.fftshift(
-        np.fft.fft(x * w)
-    )
-    return 20 * np.log10(
-        np.abs(X) + 1e-12
-    )
-
-def calc_periodogram(x, fs):
-    f, Pxx = signal.periodogram(
-        x,
-        fs=fs,
-        window='hann',
-        nfft=len(x),
-        return_onesided=False,
-        scaling='density'
-    )
-    return (
-        np.fft.fftshift(f),
-        10 * np.log10(
-            np.fft.fftshift(Pxx) + 1e-12
-        )
-    )
 
 def calc_welch(x, fs, nperseg):
     f, Pxx = signal.welch(
-        x,
-        fs=fs,
-        window='hann',
-        nperseg=nperseg,
-        return_onesided=False,
-        scaling='density'
+        x, fs=fs, window='hann', nperseg=nperseg, 
+        return_onesided=False, scaling='density'
     )
-    return (
-        np.fft.fftshift(f),
-        10 * np.log10(
-            np.fft.fftshift(Pxx) + 1e-12
-        )
-    )
+    return np.fft.fftshift(f), 10 * np.log10(np.fft.fftshift(Pxx) + 1e-12)
 
 # =========================================================
-# CALLBACK SDR
+# CALLBACKS (Hilos de Hardware)
 # =========================================================
 
 def sdr_callback(samples, context):
-    global zi_filt
-    global zi_audio
-    global last_iq
-    global latest_audio
+    global zi_filt, zi_audio, last_iq, latest_audio
 
-    # FILTRO FM
-    iq_filtered, zi_filt = signal.lfilter(
-        b_filt,
-        a_filt,
-        samples,
-        zi=zi_filt
-    )
+    # Filtro pasabajos FM
+    iq_filtered, zi_filt = signal.lfilter(b_filt, a_filt, samples, zi=zi_filt)
 
-    # DEMODULACIÓN FM
-    iq_demod_input = np.concatenate(
-        ([last_iq], iq_filtered)
-    )
+    # Demodulación FM en cuadratura
+    iq_demod_input = np.concatenate(([last_iq], iq_filtered))
     last_iq = iq_filtered[-1]
+    demod = np.angle(iq_demod_input[1:] * np.conjugate(iq_demod_input[:-1]))
 
-    demod = np.angle(
-        iq_demod_input[1:]
-        * np.conjugate(iq_demod_input[:-1])
-    )
+    # Filtro de Audio y Decimación
+    audio_filtered, zi_audio = signal.lfilter(b_audio, a_audio, demod, zi=zi_audio)
+    audio_out = audio_filtered[::DECIMATION_FACTOR]
 
-    # FILTRO AUDIO
-    audio_filtered, zi_audio = signal.lfilter(
-        b_audio,
-        a_audio,
-        demod,
-        zi=zi_audio
-    )
+    # Ganancia Digital VGA y Normalización
+    audio_out = audio_out / (np.max(np.abs(audio_out)) + 1e-12)
+    audio_out = np.float32(audio_out * DIGITAL_VGA)
 
-    # DECIMACIÓN SIMPLE
-    audio_out = audio_filtered[
-        ::DECIMATION_FACTOR
-    ]
-
-    # NORMALIZACIÓN
-    audio_out = audio_out / (
-        np.max(np.abs(audio_out)) + 1e-12
-    )
-    audio_out = np.float32(
-        audio_out * 0.8
-    )
-
-    # AUDIO QUEUE
     try:
         audio_queue.put_nowait(audio_out)
     except:
         pass
 
-    # BUFFER PSD
     with lock:
-        iq_psd_buffer[:-len(samples)] = (
-            iq_psd_buffer[len(samples):]
-        )
-        iq_psd_buffer[-len(samples):] = samples
+        iq_ring_buffer.extend(samples)
         latest_audio = audio_out.copy()
 
-# =========================================================
-# CALLBACK AUDIO
-# =========================================================
-
 def audio_callback(outdata, frames, time_info, status):
-    if status:
-        print(status)
     try:
         data = audio_queue.get_nowait()
         if len(data) >= frames:

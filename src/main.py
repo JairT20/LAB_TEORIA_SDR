@@ -1,156 +1,147 @@
 # =========================================================
-# RTL-SDR FM DASHBOARD - MAIN EXECUTION SCRIPT
+# RTL-SDR FM DASHBOARD - MAIN (Debugging Mode)
 # =========================================================
 
+import sys
+import traceback
 import numpy as np
-import matplotlib.pyplot as plt
 from scipy import signal
 import sounddevice as sd
 import threading
 import psutil
+from PyQt5.QtWidgets import QApplication, QMainWindow
+from PyQt5.QtCore import QTimer
+
+# Forzar que los errores gráficos de PyQt se impriman en la terminal
+sys.excepthook = traceback.print_exception
+
 import backend
 import frontend
 
-# =========================================================
-# AUDIO STREAM INITIATION
-# =========================================================
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        print("[SISTEMA] 1. Construyendo interfaz gráfica...")
+        self.setWindowTitle("SDR Dashboard - Análisis en Tiempo Real")
+        self.resize(1300, 850)
+        
+        self.dash = frontend.DashboardWidget()
+        self.setCentralWidget(self.dash)
 
-audio_stream = sd.OutputStream(
-    samplerate=backend.AUDIO_RATE,
-    channels=1,
-    dtype=np.float32,
-    blocksize=int(backend.N_AUDIO / backend.DECIMATION_FACTOR),
-    callback=backend.audio_callback
-)
-audio_stream.start()
-
-# =========================================================
-# SDR THREAD INITIATION
-# =========================================================
-
-sdr_thread = threading.Thread(
-    target=backend.sdr.read_samples_async,
-    args=(backend.sdr_callback, backend.N_AUDIO)
-)
-sdr_thread.daemon = True
-sdr_thread.start()
-
-# =========================================================
-# LOOP PRINCIPAL DE RENDERIZADO Y MÉTRICAS
-# =========================================================
-
-gui_counter = 0
-
-try:
-    while plt.fignum_exists(frontend.fig.number):
-        gui_counter += 1
-
-        # FRECUENCIA MANUAL VIA TEXTBOX
+        print("[SISTEMA] 2. Configurando servidor de audio...")
         try:
-            manual_freq = float(frontend.text_freq.text) * 1e6
-            if manual_freq != backend.sdr.center_freq:
-                backend.sdr.center_freq = manual_freq
+            self.audio_stream = sd.OutputStream(
+                samplerate=backend.AUDIO_RATE,
+                channels=1,
+                dtype=np.float32,
+                blocksize=int(backend.N_AUDIO / backend.DECIMATION_FACTOR),
+                callback=backend.audio_callback
+            )
+            self.audio_stream.start()
+            print("[ÉXITO] Audio conectado.")
+        except Exception as e:
+            print(f"[ADVERTENCIA] Falló el audio (la gráfica seguirá funcionando): {e}")
+            self.audio_stream = None
+
+        print("[SISTEMA] 3. Iniciando hardware RTL-SDR...")
+        self.sdr_thread = threading.Thread(
+            target=backend.sdr.read_samples_async,
+            args=(backend.sdr_callback, backend.N_AUDIO),
+            daemon=True
+        )
+        self.sdr_thread.start()
+
+        print("[SISTEMA] 4. Activando temporizadores de renderizado...")
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update_gui)
+        self.timer.start(33) 
+
+        self.dash.combo_fs.currentTextChanged.connect(self.restart_sdr_fs)
+        print("[SISTEMA] 5. ¡Ventana lista para mostrarse!")
+
+    def update_gui(self):
+        with backend.lock:
+            iq_copy = backend.iq_ring_buffer.get_latest(backend.N_PSD)
+            audio_copy = backend.latest_audio.copy()
+
+        if len(iq_copy) < backend.N_PSD:
+            return  
+
+        fs = backend.SAMPLE_RATE
+        fc = backend.sdr.center_freq
+
+        _, f_abs = backend.calculate_axes(backend.N_AUDIO, fs, fc)
+        _, f_abs_w = backend.calculate_axes(backend.N_PER_SEG, fs, fc)
+
+        chunk = iq_copy[-backend.N_AUDIO:]
+        w = np.hanning(len(chunk))
+        X = np.fft.fftshift(np.fft.fft(chunk * w))
+        fft_db = 20 * np.log10(np.abs(X) + 1e-12)
+
+        _, welch_db = backend.calc_welch(iq_copy, fs, backend.N_PER_SEG)
+        
+        iq_filt = signal.lfilter(backend.b_filt, backend.a_filt, iq_copy)
+        _, welch_filt_db = backend.calc_welch(iq_filt, fs, backend.N_PER_SEG)
+
+        self.dash.curve_fft.setData(f_abs, fft_db)
+        self.dash.curve_welch.setData(f_abs_w, welch_db)
+        self.dash.curve_welch_filt.setData(f_abs_w, welch_filt_db)
+        
+        t_audio = np.linspace(0, len(audio_copy) / backend.AUDIO_RATE, len(audio_copy)) * 1000
+        self.dash.curve_audio.setData(t_audio, audio_copy)
+
+        cpu = psutil.Process().cpu_percent()
+        potencia = 10 * np.log10(np.mean(np.abs(iq_copy)**2) + 1e-12)
+        clipping = " | ⚠️ CLIPPING!" if np.max(np.abs(iq_copy)) > 0.99 else ""
+        
+        info_text = (f"Frecuencia: {fc/1e6:.3f} MHz | Fs: {fs/1e6:.3f} MSps | "
+                     f"Potencia: {potencia:.1f} dBFS | CPU: {cpu:.1f}% {clipping}")
+        self.dash.lbl_metrics.setText(info_text)
+
+    def restart_sdr_fs(self, text):
+        new_fs = float(text)
+        if new_fs == backend.SAMPLE_RATE: 
+            return
+        
+        self.timer.stop()
+        backend.sdr.cancel_read_async()
+        if self.audio_stream:
+            self.audio_stream.stop()
+            self.audio_stream.close()
+        
+        backend.SAMPLE_RATE = new_fs
+        backend.update_filters()
+        backend.sdr.sample_rate = new_fs
+        
+        try:
+            self.audio_stream = sd.OutputStream(
+                samplerate=backend.AUDIO_RATE, channels=1, dtype=np.float32,
+                blocksize=int(backend.N_AUDIO / backend.DECIMATION_FACTOR),
+                callback=backend.audio_callback
+            )
+            self.audio_stream.start()
         except:
-            pass
+            self.audio_stream = None
+            
+        self.sdr_thread = threading.Thread(
+            target=backend.sdr.read_samples_async,
+            args=(backend.sdr_callback, backend.N_AUDIO), daemon=True
+        )
+        self.sdr_thread.start()
+        self.timer.start(33)
 
-        # GANANCIA VIA SLIDER
-        backend.sdr.gain = frontend.slider_gain.val
+    def closeEvent(self, event):
+        self.timer.stop()
+        backend.sdr.cancel_read_async()
+        backend.sdr.close()
+        if self.audio_stream:
+            self.audio_stream.stop()
+            self.audio_stream.close()
+        event.accept()
 
-        # UPDATE GUI
-        if gui_counter >= backend.GUI_UPDATE_INTERVAL:
-            with backend.lock:
-                iq_copy = backend.iq_psd_buffer.copy()
-                audio_copy = backend.latest_audio.copy()
-
-            # FFT
-            fft_db = backend.calc_fft(
-                iq_copy[-backend.N_AUDIO:]
-            )
-
-            # PERIODOGRAMA
-            _, per_db = backend.calc_periodogram(
-                iq_copy[-backend.N_AUDIO:],
-                backend.SAMPLE_RATE
-            )
-
-            # WELCH CRUDA
-            _, welch_db = backend.calc_welch(
-                iq_copy,
-                backend.SAMPLE_RATE,
-                backend.N_PER_SEG
-            )
-
-            # WELCH FILTRADA
-            iq_filt = signal.lfilter(
-                backend.b_filt,
-                backend.a_filt,
-                iq_copy
-            )
-            _, welch_filt_db = backend.calc_welch(
-                iq_filt,
-                backend.SAMPLE_RATE,
-                backend.N_PER_SEG
-            )
-
-            # UPDATE DATA EN LAS LÍNEAS
-            frontend.line_fft.set_ydata(fft_db)
-            frontend.line_per.set_ydata(per_db)
-            frontend.line_welch.set_ydata(welch_db)
-            frontend.line_welch_filt.set_ydata(welch_filt_db)
-            frontend.line_demod.set_ydata(
-                audio_copy[:len(frontend.t_demod)]
-            )
-
-            # CALCULO DE MÉTRICAS COMPUTACIONALES Y DE SEÑAL
-            cpu_process = psutil.Process().cpu_percent()
-            cpu_total = psutil.cpu_percent()
-            mem_mb = psutil.Process().memory_info().rss / (1024 * 1024)
-
-            noise_floor = np.median(per_db)
-            potencia = np.mean(np.abs(iq_copy) ** 2)
-            potencia_dbfs = 10 * np.log10(potencia + 1e-12)
-
-            idx_peak = np.argmax(welch_db)
-            freq_peak = frontend.f_abs_w[idx_peak]
-
-            clipping = ""
-            if (
-                np.max(np.abs(np.real(iq_copy))) > 0.99
-                or
-                np.max(np.abs(np.imag(iq_copy))) > 0.99
-            ):
-                clipping = "\n>>> CLIPPING DETECTADO <<<"
-
-            info = (
-                f"--- MÉTRICAS DE LA SEÑAL ---\n"
-                f"Frec. Central: {freq_peak:.3f} MHz\n"
-                f"Potencia (P): {potencia_dbfs:.1f} dBFS\n"
-                f"Piso Ruido: {noise_floor:.1f} dB/Hz\n\n"
-                f"--- COSTO COMPUTACIONAL ---\n"
-                f"CPU Proceso: {cpu_process:.1f}%\n"
-                f"CPU Total: {cpu_total:.1f}%\n"
-                f"Memoria RAM: {mem_mb:.1f} MB"
-            )
-
-            if backend.show_clipping:
-                info += clipping
-
-            frontend.text_info.set_text(info)
-
-            frontend.fig.canvas.draw_idle()
-            frontend.fig.canvas.flush_events()
-            plt.pause(0.001)
-
-            gui_counter = 0
-
-except KeyboardInterrupt:
-    print("Finalizando...")
-
-finally:
-    # Cierre seguro de recursos hardware y streams de audio
-    backend.sdr.cancel_read_async()
-    backend.sdr.close()
-    audio_stream.stop()
-    audio_stream.close()
-    plt.ioff()
-    plt.show()
+if __name__ == '__main__':
+    print("[SISTEMA] Iniciando aplicación...")
+    app = QApplication(sys.argv)
+    window = MainWindow()
+    window.show()
+    sys.exit(app.exec_())

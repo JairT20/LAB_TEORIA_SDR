@@ -1,254 +1,225 @@
 # =========================================================
-# RTL-SDR FM DASHBOARD - FRONTEND
+# RTL-SDR FM DASHBOARD - FRONTEND (Estilo Premium)
 # =========================================================
 
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.widgets import Slider, TextBox, Button
+import pyqtgraph as pg
+from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, 
+                             QLabel, QDoubleSpinBox, QSlider, QComboBox, QFrame)
+from PyQt5.QtCore import Qt
 import backend
 
-# =========================================================
-# INTERFAZ
-# =========================================================
+# Fondo oscuro profundo para resaltar los gráficos analíticos
+pg.setConfigOption('background', '#181a1f')  
+pg.setConfigOption('foreground', '#abb2bf')  
 
-plt.ion()
+class DashboardWidget(QWidget):
+    def __init__(self):
+        super().__init__()
+        
+        # OBLIGAR AL WIDGET A PINTAR SU FONDO (Elimina el filo blanco del SO)
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        
+        # =========================================================
+        # HOJA DE ESTILOS (QSS) - Diseño UI Moderno
+        # =========================================================
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #181a1f;
+                color: #abb2bf;
+                font-family: 'Segoe UI', 'Ubuntu', sans-serif;
+                font-size: 13px;
+                border: none; /* Forzar sin bordes base */
+            }
+            
+            /* Panel de controles tipo "Tarjeta" inferior */
+            QFrame#ControlPanel {
+                background-color: #21252b;
+                border: 1px solid #2c313a;
+                border-radius: 8px;
+            }
+            
+            /* Etiquetas de texto */
+            QLabel {
+                font-weight: 600;
+                color: #abb2bf;
+            }
+            
+            /* Sliders estilizados */
+            QSlider::groove:horizontal {
+                background: #181a1f;
+                border: 1px solid #2c313a;
+                height: 8px;
+                border-radius: 4px;
+            }
+            QSlider::handle:horizontal {
+                background: #61afef;
+                width: 16px;
+                height: 16px;
+                margin: -4px 0;
+                border-radius: 8px;
+            }
+            QSlider::handle:horizontal:hover {
+                background: #528bff;
+            }
+            
+            /* Cajas de texto y menús desplegables */
+            QDoubleSpinBox, QComboBox {
+                background-color: #181a1f;
+                border: 1px solid #2c313a;
+                border-radius: 4px;
+                padding: 4px 8px;
+                color: #98c379;
+                font-weight: bold;
+            }
+            QDoubleSpinBox:focus, QComboBox:focus, 
+            QDoubleSpinBox:hover, QComboBox:hover {
+                border: 1px solid #61afef;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 20px;
+            }
+            
+            /* Panel de métricas inferior */
+            QLabel#MetricsLabel {
+                color: #61afef;
+                font-family: monospace;
+                font-size: 14px;
+                font-weight: bold;
+                padding: 5px;
+            }
+        """)
 
-fig = plt.figure(figsize=(14, 8))
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(15, 15, 15, 15) # Márgenes de toda la ventana
+        layout.setSpacing(15)
 
-gs = fig.add_gridspec(
-    2,
-    3,
-    hspace=0.35,
-    wspace=0.25,
-    bottom=0.2
-)
+        # =========================================================
+        # SECCIÓN DE GRÁFICOS
+        # =========================================================
+        self.glayout = pg.GraphicsLayoutWidget()
+        self.glayout.setStyleSheet("border: none;") # Eliminar bordes blancos de pyqtgraph
+        layout.addWidget(self.glayout, stretch=1)
 
-ax_fft = fig.add_subplot(gs[0, 0])
-ax_per = fig.add_subplot(gs[0, 1])
-ax_welch = fig.add_subplot(gs[0, 2])
-ax_demod = fig.add_subplot(gs[1, 0:2])
-ax_info = fig.add_subplot(gs[1, 2])
-ax_info.axis('off')
+        # 1. Plot FFT
+        self.plot_fft = self.glayout.addPlot(title="FFT Instantánea")
+        self.plot_fft.showGrid(x=True, y=True, alpha=0.2)
+        self.plot_fft.setYRange(-50, 80)
+        self.plot_fft.setLabel('bottom', "Frecuencia (MHz)")
+        self.curve_fft = self.plot_fft.plot(pen=pg.mkPen('#61afef', width=1.5)) 
+        
+        # 2. Plot Welch
+        self.plot_welch = self.glayout.addPlot(title="PSD: Densidad Espectral de Welch")
+        self.plot_welch.showGrid(x=True, y=True, alpha=0.2)
+        self.plot_welch.setYRange(-150, -50)
+        self.plot_welch.setLabel('bottom', "Frecuencia (MHz)")
+        self.plot_welch.addLegend()
+        self.curve_welch = self.plot_welch.plot(pen=pg.mkPen('#56b6c2', width=1.5), name="Cruda") 
+        self.curve_welch_filt = self.plot_welch.plot(pen=pg.mkPen('#e06c75', width=1.5), name="Filtrada")
 
-# =========================================================
-# CONTROLES
-# =========================================================
+        self.glayout.nextRow()
+        
+        # 3. Plot Audio
+        self.plot_audio = self.glayout.addPlot(title="Señal FM Demodulada (Búfer de Audio)", colspan=2)
+        self.plot_audio.showGrid(x=True, y=True, alpha=0.2)
+        self.plot_audio.setYRange(-1.5, 1.5)
+        self.plot_audio.setLabel('bottom', "Tiempo (ms)")
+        self.curve_audio = self.plot_audio.plot(pen=pg.mkPen('#c678dd', width=1.5)) 
 
-ax_freq = fig.add_axes([0.10, 0.05, 0.20, 0.05])
-ax_addfreq = fig.add_axes([0.32, 0.05, 0.05, 0.05])
-ax_gain = fig.add_axes([0.40, 0.05, 0.20, 0.05])
-ax_clip = fig.add_axes([0.70, 0.05, 0.20, 0.05])
+        # =========================================================
+        # SECCIÓN DE CONTROLES
+        # =========================================================
+        
+        # Creamos el contenedor con estilo "tarjeta"
+        self.control_panel = QFrame()
+        self.control_panel.setObjectName("ControlPanel")
+        
+        # El layout interno de la tarjeta
+        ctrl_layout = QHBoxLayout(self.control_panel)
+        ctrl_layout.setContentsMargins(15, 12, 15, 12)
+        ctrl_layout.setSpacing(20)
+        
+        # Input Frecuencia
+        frec_layout = QHBoxLayout()
+        frec_layout.addWidget(QLabel("Frec (MHz):"))
+        self.spin_freq = QDoubleSpinBox()
+        self.spin_freq.setRange(88.0, 108.0)
+        self.spin_freq.setValue(backend.CENTER_FREQ / 1e6)
+        self.spin_freq.setDecimals(2)
+        self.spin_freq.setSingleStep(0.1)
+        self.spin_freq.valueChanged.connect(self.on_freq_change)
+        frec_layout.addWidget(self.spin_freq)
+        ctrl_layout.addLayout(frec_layout)
 
-# =========================================================
-# WIDGETS
-# =========================================================
+        # Ganancia LNA (Hardware)
+        lna_layout = QHBoxLayout()
+        lna_layout.addWidget(QLabel("LNA Gain:"))
+        self.slider_lna = QSlider(Qt.Horizontal)
+        self.slider_lna.setRange(0, 50)
+        self.slider_lna.setValue(backend.GAIN)
+        self.slider_lna.valueChanged.connect(self.on_lna_change)
+        lna_layout.addWidget(self.slider_lna)
+        self.lbl_lna_val = QLabel(f"{backend.GAIN} dB")
+        self.lbl_lna_val.setStyleSheet("color: #61afef; min-width: 45px;")
+        lna_layout.addWidget(self.lbl_lna_val)
+        ctrl_layout.addLayout(lna_layout)
 
-text_freq = TextBox(
-    ax_freq,
-    'Frec (MHz):',
-    initial='100.0'
-)
+        # Ganancia VGA (Software)
+        vga_layout = QHBoxLayout()
+        vga_layout.addWidget(QLabel("VGA Gain:"))
+        self.slider_vga = QSlider(Qt.Horizontal)
+        self.slider_vga.setRange(1, 20) 
+        self.slider_vga.setValue(int(backend.DIGITAL_VGA * 10))
+        self.slider_vga.valueChanged.connect(self.on_vga_change)
+        vga_layout.addWidget(self.slider_vga)
+        self.lbl_vga_val = QLabel(f"x{backend.DIGITAL_VGA:.1f}")
+        self.lbl_vga_val.setStyleSheet("color: #c678dd; min-width: 40px;")
+        vga_layout.addWidget(self.lbl_vga_val)
+        ctrl_layout.addLayout(vga_layout)
 
-btn_addfreq = Button(
-    ax_addfreq,
-    '+'
-)
+        # Parámetro Welch: N_PSD
+        npsd_layout = QHBoxLayout()
+        npsd_layout.addWidget(QLabel("N_PSD:"))
+        self.combo_npsd = QComboBox()
+        self.combo_npsd.addItems(["256", "512", "1024", "2048", "4096"])
+        self.combo_npsd.setCurrentText(str(backend.N_PER_SEG))
+        self.combo_npsd.currentTextChanged.connect(self.on_npsd_change)
+        npsd_layout.addWidget(self.combo_npsd)
+        ctrl_layout.addLayout(npsd_layout)
 
-slider_gain = Slider(
-    ax_gain,
-    'Ganancia:',
-    0,
-    50,
-    valinit=backend.GAIN
-)
+        # Parámetro Fs (Sample Rate)
+        fs_layout = QHBoxLayout()
+        fs_layout.addWidget(QLabel("Fs (Hz):"))
+        self.combo_fs = QComboBox()
+        self.combo_fs.addItems(["1024000", "2048000", "2400000"])
+        self.combo_fs.setCurrentText(str(int(backend.SAMPLE_RATE)))
+        fs_layout.addWidget(self.combo_fs)
+        ctrl_layout.addLayout(fs_layout)
 
-btn_clip = Button(
-    ax_clip,
-    'Mostrar Clipping'
-)
+        # Añadimos el panel de controles al diseño principal
+        layout.addWidget(self.control_panel, stretch=0)
 
-# =========================================================
-# CLIPPING CALLBACK
-# =========================================================
+        # =========================================================
+        # PANEL DE MÉTRICAS (Texto inferior)
+        # =========================================================
+        self.lbl_metrics = QLabel("Inicializando métricas...")
+        self.lbl_metrics.setObjectName("MetricsLabel")
+        layout.addWidget(self.lbl_metrics)
 
-def toggle_clipping(event):
-    backend.show_clipping = not backend.show_clipping
+    # =========================================================
+    # EVENTOS
+    # =========================================================
+    def on_freq_change(self, val):
+        backend.sdr.center_freq = val * 1e6
 
-btn_clip.on_clicked(toggle_clipping)
+    def on_lna_change(self, val):
+        backend.sdr.gain = val
+        self.lbl_lna_val.setText(f"{val} dB")
 
-# =========================================================
-# CAMBIO FRECUENCIA CALLBACK
-# =========================================================
+    def on_vga_change(self, val):
+        vga_real = val / 10.0
+        backend.DIGITAL_VGA = vga_real
+        self.lbl_vga_val.setText(f"x{vga_real:.1f}")
 
-def set_frequency(freq_mhz):
-    freq_hz = freq_mhz * 1e6
-    backend.CENTER_FREQ = freq_hz
-    backend.sdr.center_freq = freq_hz
-
-    text_freq.set_val(
-        str(freq_mhz)
-    )
-
-    _, f_abs_new = backend.calculate_axes(
-        backend.N_AUDIO,
-        backend.SAMPLE_RATE,
-        freq_hz
-    )
-
-    _, f_abs_w_new = backend.calculate_axes(
-        backend.N_PER_SEG,
-        backend.SAMPLE_RATE,
-        freq_hz
-    )
-
-    line_fft.set_xdata(
-        f_abs_new
-    )
-
-    line_per.set_xdata(
-        f_abs_new
-    )
-
-    line_welch.set_xdata(
-        f_abs_w_new
-    )
-
-    line_welch_filt.set_xdata(
-        f_abs_w_new
-    )
-
-# =========================================================
-# BOTONES DINÁMICOS
-# =========================================================
-
-def create_freq_button(freq_mhz):
-    idx = len(backend.freq_buttons)
-    x_pos = 0.10 + idx * 0.07
-
-    if x_pos > 0.60:
-        return
-
-    ax_new = fig.add_axes(
-        [x_pos, 0.12, 0.06, 0.04]
-    )
-
-    btn = Button(
-        ax_new,
-        f"{freq_mhz:.1f}"
-    )
-
-    btn.on_clicked(
-        lambda event:
-        set_frequency(freq_mhz)
-    )
-
-    backend.freq_axes.append(ax_new)
-    backend.freq_buttons.append(btn)
-    fig.canvas.draw_idle()
-
-# =========================================================
-# AGREGAR FRECUENCIA CALLBACK
-# =========================================================
-
-def add_frequency(event):
-    try:
-        freq = float(
-            text_freq.text
-        )
-        if freq not in backend.saved_freqs:
-            backend.saved_freqs.append(freq)
-            create_freq_button(freq)
-    except:
-        pass
-
-btn_addfreq.on_clicked(add_frequency)
-
-# =========================================================
-# EJES INICIALES
-# =========================================================
-
-f_rel, f_abs = backend.calculate_axes(
-    backend.N_AUDIO,
-    backend.SAMPLE_RATE,
-    backend.CENTER_FREQ
-)
-
-f_rel_w, f_abs_w = backend.calculate_axes(
-    backend.N_PER_SEG,
-    backend.SAMPLE_RATE,
-    backend.CENTER_FREQ
-)
-
-# =========================================================
-# LÍNEAS
-# =========================================================
-
-line_fft, = ax_fft.plot(
-    f_abs,
-    np.zeros(backend.N_AUDIO),
-    color='blue'
-)
-
-line_per, = ax_per.plot(
-    f_abs,
-    np.zeros(backend.N_AUDIO),
-    color='green'
-)
-
-line_welch, = ax_welch.plot(
-    f_abs_w,
-    np.zeros(backend.N_PER_SEG),
-    color='red',
-    label='Señal Cruda'
-)
-
-line_welch_filt, = ax_welch.plot(
-    f_abs_w,
-    np.zeros(backend.N_PER_SEG),
-    color='cyan',
-    label='Señal Filtrada'
-)
-
-t_demod = np.linspace(
-    0,
-    len(backend.latest_audio) / backend.AUDIO_RATE,
-    len(backend.latest_audio)
-) * 1000
-
-line_demod, = ax_demod.plot(
-    t_demod,
-    backend.latest_audio,
-    color='purple'
-)
-
-text_info = ax_info.text(
-    0.05,
-    0.5,
-    "",
-    fontsize=10,
-    verticalalignment='center',
-    fontfamily='monospace'
-)
-
-# =========================================================
-# CONFIG PLOTS
-# =========================================================
-
-ax_fft.set_title('1. FFT Instantánea')
-ax_per.set_title('2. PSD: Periodograma')
-ax_welch.set_title('3. PSD: Welch (Antes y Después del Filtro)')
-ax_demod.set_title('4. Señal FM Demodulada')
-
-ax_fft.grid(True)
-ax_per.grid(True)
-ax_welch.grid(True)
-ax_demod.grid(True)
-
-ax_fft.set_ylim(-50, 80)
-ax_per.set_ylim(-150, -50)
-ax_welch.set_ylim(-150, -50)
-ax_demod.set_ylim(-1, 1)
-
-ax_demod.set_xlabel('Tiempo del Búfer (ms)')
-ax_demod.set_ylabel('Amplitud Demodulada')
-ax_welch.legend()
+    def on_npsd_change(self, text):
+        backend.N_PER_SEG = int(text)
