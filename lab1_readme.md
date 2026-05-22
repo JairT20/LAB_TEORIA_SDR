@@ -129,7 +129,7 @@ Estas métricas permitieron evaluar el comportamiento del sistema en tiempo real
 
 <br>
 
-![Figura 1: Visualización general del sistema SDR implementado](1.png)
+![Figura 1: Visualización general del sistema SDR implementado](imagenes/1.png)
 
 <br>
 
@@ -194,7 +194,7 @@ Con el fin de analizar el comportamiento del sistema SDR, se realizaron pruebas 
 
 <br>
 
-![Figura 2: Visualización general del sistema SDR implementado](2.png)
+![Figura 2: Visualización general del sistema SDR implementado](imagenes/2.png)
 
 <br>
 
@@ -208,7 +208,7 @@ La FFT instantánea presentó menor amplitud en el pico principal, indicando una
 
 <br>
 
-![Figura 3: Visualización general del sistema SDR implementado](3.png)
+![Figura 3: Visualización general del sistema SDR implementado](imagenes/3.png)
 
 <br>
 
@@ -224,7 +224,7 @@ La señal demodulada presentó una forma temporal más estable respecto al caso 
 
 <br>
 
-![Figura 4: Visualización general del sistema SDR implementado](4.png)
+![Figura 4: Visualización general del sistema SDR implementado](imagenes/4.png)
 
 <br>
 
@@ -244,7 +244,7 @@ En esta condición se observó una señal demodulada continua y correctamente re
 
 <br>
 
-![Figura 5: Visualización general del sistema SDR implementado](5.png)
+![Figura 5: Visualización general del sistema SDR implementado](imagenes/5.png)
 
 <br>
 
@@ -260,7 +260,7 @@ Esto produjo una mayor dispersión espectral y aumento de fluctuaciones en la PS
 
 <br>
 
-![Figura 6: Visualización general del sistema SDR implementado](6.png)
+![Figura 6: Visualización general del sistema SDR implementado](imagenes/6.png)
 
 <br>
 
