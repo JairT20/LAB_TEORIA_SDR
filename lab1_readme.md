@@ -6,7 +6,7 @@
 **Presentado por:**
 * Marlyn Nathalia Mora Riascos
 * Hernan Jair Telpiz Cuaran
-* Brayan Gallego
+* Brayan Manuel Gallego Ocampo
 
 **Teoría de Señales**  
 Universidad Nacional de Colombia  

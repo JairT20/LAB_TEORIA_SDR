@@ -1,0 +1,27 @@
+============================================================
+INSTRUCCIONES PARA CONFIGURAR Y EJECUTAR EL PROYECTO
+============================================================
+
+Sigue estos pasos en tu terminal para configurar el entorno virtual:
+
+1. CREAR EL ENTORNO VIRTUAL:
+   python3 -m venv venv
+
+2. ACTIVAR EL ENTORNO VIRTUAL:
+   - En Linux / Mac:
+     source venv/bin/activate
+   - En Windows (Git Bash):
+     source venv/Scripts/activate
+   - En Windows (PowerShell):
+     .\venv\Scripts\Activate.ps1
+
+3. INSTALAR LAS LIBRERÍAS/DEPENDENCIAS:
+   pip install -r requirements.txt
+
+4. EJECUTAR EL PROYECTO:
+   python main.py
+
+------------------------------------------------------------
+Nota: Recuerda activar siempre el venv antes de trabajar.
+============================================================
+
