@@ -1,5 +1,15 @@
 
+# Entornos virtuales
 venv/
 .venv/
-__pycache__/
+ENV/
+
+# Archivos de caché de Python
+**/__pycache__/
 *.pyc
+*.pyo
+*.pyd
+
+# Archivos ocultos del sistema o editor
+.DS_Store
+.vscode/

@@ -24,4 +24,3 @@ Sigue estos pasos en tu terminal para configurar el entorno virtual:
 ------------------------------------------------------------
 Nota: Recuerda activar siempre el venv antes de trabajar.
 ============================================================
-
